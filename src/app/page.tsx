@@ -14,23 +14,14 @@ import { Projects } from "@/components/sections/Projects";
 import { Certifications } from "@/components/sections/Certifications";
 import { Resume } from "@/components/sections/Resume";
 import { Contact } from "@/components/sections/Contact";
-import { SketchbookHero } from "@/components/sections/SketchbookHero";
-import { SketchbookFeatureGrid } from "@/components/sections/SketchbookFeatureGrid";
-import { SketchbookProjects } from "@/components/sections/SketchbookProjects";
-import { SketchbookContact } from "@/components/sections/SketchbookContact";
 import { CyberpunkDataBar } from "@/components/sections/CyberpunkDataBar";
 import { CyberpunkServicesGrid } from "@/components/sections/CyberpunkServicesGrid";
 import { CyberpunkCTA } from "@/components/sections/CyberpunkCTA";
-import { VelorahHero } from "@/components/sections/VelorahHero";
-import { CodeNestHero } from "@/components/sections/CodeNestHero";
 import { useThemeContext } from "@/components/providers/ThemeProvider";
 
 function PageContent() {
   const { theme } = useThemeContext();
   const isCyberpunk = theme === "cyberpunk";
-  const isSketchbook = theme === "sketchbook";
-  const isVelorah = theme === "velorah";
-  const isCodeNest = theme === "codenest";
 
   return (
     <>
@@ -42,16 +33,16 @@ function PageContent() {
       </a>
       <Navbar />
       <main id="main-content">
-        {isCodeNest ? <CodeNestHero /> : isVelorah ? <VelorahHero /> : isSketchbook ? <SketchbookHero /> : <Hero />}
+        <Hero />
         {isCyberpunk && <CyberpunkDataBar />}
         <About />
-        {isSketchbook ? <SketchbookFeatureGrid /> : <Skills />}
+        <Skills />
         {isCyberpunk && <CyberpunkServicesGrid />}
-        {isSketchbook ? <SketchbookProjects /> : <Projects />}
+        <Projects />
         <Certifications />
         <Resume />
         {isCyberpunk && <CyberpunkCTA />}
-        {isSketchbook ? <SketchbookContact /> : <Contact />}
+        <Contact />
       </main>
       <Footer />
       <Terminal />

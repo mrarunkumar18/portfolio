@@ -28,7 +28,6 @@ export function Button({
 }: ButtonProps) {
   const { theme } = useThemeContext();
   const isCyberpunk = theme === "cyberpunk";
-  const isNeonSpace = theme === "neonspace";
   const isColobus = theme === "colobus";
 
   // In cyberpunk mode, all buttons become brutalist
@@ -67,7 +66,6 @@ export function Button({
 
   const baseStyles = cn(
     "inline-flex items-center justify-center gap-2 font-medium rounded-[var(--radius-md)] transition-all duration-[var(--transition-base)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-primary)]",
-    isNeonSpace && "btn-neonspace",
     isColobus && "btn-colobus"
   );
 

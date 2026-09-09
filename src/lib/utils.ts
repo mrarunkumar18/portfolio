@@ -31,19 +31,15 @@ export function markVisited(): void {
 /**
  * Get current theme from localStorage.
  */
-export function getStoredTheme(): "dark" | "light" | "cyberpunk" | "sketchbook" | "terminal" | "neonspace" | "colobus" | "velorah" | "codenest" | null {
+export function getStoredTheme(): "dark" | "light" | "cyberpunk" | "terminal" | "colobus" | null {
   if (!isBrowser()) return null;
   const stored = localStorage.getItem("portfolio-theme");
   if (
     stored === "dark" ||
     stored === "light" ||
     stored === "cyberpunk" ||
-    stored === "sketchbook" ||
     stored === "terminal" ||
-    stored === "neonspace" ||
-    stored === "colobus" ||
-    stored === "velorah" ||
-    stored === "codenest"
+    stored === "colobus"
   ) return stored;
   return null;
 }
@@ -51,7 +47,7 @@ export function getStoredTheme(): "dark" | "light" | "cyberpunk" | "sketchbook" 
 /**
  * Store theme preference.
  */
-export function setStoredTheme(theme: "dark" | "light" | "cyberpunk" | "sketchbook" | "terminal" | "neonspace" | "colobus" | "velorah" | "codenest"): void {
+export function setStoredTheme(theme: "dark" | "light" | "cyberpunk" | "terminal" | "colobus"): void {
   if (!isBrowser()) return;
   localStorage.setItem("portfolio-theme", theme);
 }

@@ -7,6 +7,7 @@ import { ScrollProgress } from "@/components/layout/ScrollProgress";
 import { LoadingScreen } from "@/components/layout/LoadingScreen";
 import { Terminal } from "@/components/ui/Terminal";
 import { ScanlineOverlay } from "@/components/ui/ScanlineOverlay";
+import { AskArunButton } from "@/components/ui/AskArun";
 import { Hero } from "@/components/sections/Hero";
 import { About } from "@/components/sections/About";
 import { Skills } from "@/components/sections/Skills";
@@ -46,6 +47,7 @@ function PageContent() {
       </main>
       <Footer />
       <Terminal />
+      <AskArunButton />
     </>
   );
 }

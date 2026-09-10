@@ -1397,3 +1397,487 @@ section {
 .terminal-body .highlight {
   color: var(--accent-secondary);
 }
+
+/* ========================================
+   ASK ARUN — AI PORTFOLIO ASSISTANT
+   All styles use existing CSS custom properties
+   so every theme is supported automatically.
+   ======================================== */
+
+/* ── Floating Action Button ─────────────────────────────────────────────── */
+
+.ask-arun-trigger-wrapper {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ask-arun-fab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px var(--accent-primary-glow), 0 2px 8px rgba(0,0,0,0.3);
+  transition: background var(--transition-fast), box-shadow var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.ask-arun-fab:hover {
+  background: var(--accent-primary-hover);
+  box-shadow: 0 6px 28px var(--accent-primary-glow), 0 4px 12px rgba(0,0,0,0.35);
+}
+
+.ask-arun-fab:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 3px;
+}
+
+/* One-time pulse keyframe (fires once on mount) */
+@keyframes ask-arun-pulse-once {
+  0%   { box-shadow: 0 0 0 0 var(--accent-primary-glow); }
+  60%  { box-shadow: 0 0 0 12px rgba(139,92,246,0); }
+  100% { box-shadow: 0 0 0 0 rgba(139,92,246,0); }
+}
+
+.ask-arun-fab:not(.ask-arun-fab--open) {
+  animation: ask-arun-pulse-once 1.8s ease-out 2s 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-arun-fab:not(.ask-arun-fab--open) {
+    animation: none;
+  }
+}
+
+/* ── Tooltip ─────────────────────────────────────────────────────────────── */
+
+.ask-arun-tooltip {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+}
+
+.ask-arun-trigger-wrapper:hover .ask-arun-tooltip {
+  opacity: 1;
+}
+
+/* ── Backdrop (mobile) ───────────────────────────────────────────────────── */
+
+.ask-arun-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 8998;
+}
+
+@media (max-width: 640px) {
+  .ask-arun-backdrop {
+    display: block;
+  }
+}
+
+/* ── Chat Panel ──────────────────────────────────────────────────────────── */
+
+.ask-arun-panel {
+  position: fixed;
+  bottom: 88px;
+  right: 24px;
+  width: 380px;
+  max-height: 620px;
+  height: calc(100vh - 120px);
+  z-index: 8999;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card), 0 0 0 1px var(--border-subtle);
+  overflow: hidden;
+}
+
+/* Mobile: near full-screen */
+@media (max-width: 640px) {
+  .ask-arun-panel {
+    bottom: 0;
+    right: 0;
+    left: 0;
+    width: 100%;
+    max-height: 92dvh;
+    height: 92dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    border-bottom: none;
+  }
+
+  .ask-arun-trigger-wrapper {
+    bottom: 16px;
+    right: 16px;
+  }
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.ask-arun-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.ask-arun-header-identity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ask-arun-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1;
+}
+
+.ask-arun-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+  line-height: 1;
+}
+
+.ask-arun-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ask-arun-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.ask-arun-icon-btn:hover {
+  background: var(--bg-surface-hover);
+  color: var(--text-primary);
+}
+
+.ask-arun-icon-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+/* ── Messages area ───────────────────────────────────────────────────────── */
+
+.ask-arun-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+
+/* ── Message rows ────────────────────────────────────────────────────────── */
+
+.ask-arun-msg-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.ask-arun-msg-row--user {
+  flex-direction: row-reverse;
+}
+
+/* ── Avatar (assistant only) ─────────────────────────────────────────────── */
+
+.ask-arun-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--accent-primary-glow);
+  border: 1px solid var(--border-accent);
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* ── Bubbles ─────────────────────────────────────────────────────────────── */
+
+.ask-arun-bubble {
+  max-width: 80%;
+  padding: 10px 13px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.ask-arun-bubble--user {
+  background: var(--accent-primary);
+  color: #ffffff;
+  border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
+}
+
+.ask-arun-bubble--assistant {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  border-radius: 4px var(--radius-md) var(--radius-md) var(--radius-md);
+}
+
+/* ── Message text ────────────────────────────────────────────────────────── */
+
+.ask-arun-msg-text {
+  margin: 0 0 4px;
+  font-family: var(--font-sans);
+}
+
+.ask-arun-msg-text:last-child {
+  margin-bottom: 0;
+}
+
+.ask-arun-msg-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #ef4444;
+}
+
+/* ── Safe Markdown elements ──────────────────────────────────────────────── */
+
+.ask-arun-bubble--assistant .ask-arun-list {
+  margin: 4px 0 4px 16px;
+  padding: 0;
+}
+
+.ask-arun-bubble--assistant .ask-arun-list li {
+  margin-bottom: 3px;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  color: var(--text-primary);
+}
+
+.ask-arun-inline-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: var(--accent-secondary);
+}
+
+.ask-arun-code-block {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: pre;
+}
+
+.ask-arun-link {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity var(--transition-fast);
+}
+
+.ask-arun-link:hover {
+  opacity: 0.8;
+}
+
+/* ── Quick prompts ───────────────────────────────────────────────────────── */
+
+.ask-arun-quick-prompts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ask-arun-quick-prompt-btn {
+  text-align: left;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  line-height: 1.4;
+}
+
+.ask-arun-quick-prompt-btn:hover {
+  background: var(--bg-surface-hover);
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+.ask-arun-quick-prompt-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 1px;
+}
+
+/* ── Typing indicator ────────────────────────────────────────────────────── */
+
+.ask-arun-typing {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.ask-arun-typing-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: ask-arun-bounce 1.2s ease-in-out infinite;
+}
+
+@keyframes ask-arun-bounce {
+  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+  40%            { transform: translateY(-5px); opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ask-arun-typing-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* ── Input area ──────────────────────────────────────────────────────────── */
+
+.ask-arun-input-area {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-surface);
+}
+
+.ask-arun-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 8px 8px 8px 12px;
+  transition: border-color var(--transition-fast);
+}
+
+.ask-arun-input-wrapper:focus-within {
+  border-color: var(--accent-primary);
+}
+
+.ask-arun-input-wrapper--error {
+  border-color: #ef4444;
+}
+
+.ask-arun-textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  color: var(--text-primary);
+  line-height: 1.5;
+  min-height: 22px;
+  max-height: 120px;
+  padding: 0;
+  scrollbar-width: thin;
+}
+
+.ask-arun-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.ask-arun-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ask-arun-send-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: var(--accent-primary);
+  color: #ffffff;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.ask-arun-send-btn:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+}
+
+.ask-arun-send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.ask-arun-send-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.ask-arun-char-count {
+  margin: 4px 0 0;
+  font-size: 11px;
+  text-align: right;
+  color: var(--text-muted);
+}
+
+.ask-arun-char-count--error {
+  color: #ef4444;
+}
+

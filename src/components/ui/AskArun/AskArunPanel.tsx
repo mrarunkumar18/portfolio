@@ -11,6 +11,7 @@ import { type ChatMessage } from "./types";
 /* ── Constants ─────────────────────────────────────────────────────────── */
 
 const SESSION_KEY = "ask-arun-history";
+const SESSION_ID_KEY = "ask-arun-session-id";
 const MAX_SESSION_MESSAGES = 20;
 
 const WELCOME_MESSAGE: ChatMessage = {
@@ -22,9 +23,9 @@ const WELCOME_MESSAGE: ChatMessage = {
   status: "complete",
 };
 
-/* ── Session storage helpers ─────────────────────────────────────────────── */
+/* ── Session storage helpers (UX cache — fast restore on reopen) ──────── */
 
-function loadHistory(): ChatMessage[] {
+function loadCachedHistory(): ChatMessage[] {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
     if (!raw) return [];
@@ -36,9 +37,8 @@ function loadHistory(): ChatMessage[] {
   }
 }
 
-function saveHistory(messages: ChatMessage[]) {
+function saveCachedHistory(messages: ChatMessage[]) {
   try {
-    // Only persist complete user/assistant messages (no errors, no welcome)
     const toSave = messages
       .filter((m) => m.id !== "welcome" && m.status === "complete")
       .slice(-MAX_SESSION_MESSAGES);
@@ -48,23 +48,16 @@ function saveHistory(messages: ChatMessage[]) {
   }
 }
 
-function clearHistory() {
+function clearCachedHistory() {
   try {
     sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_ID_KEY);
   } catch {
     // ignore
   }
 }
 
-/* ── API call ────────────────────────────────────────────────────────────── */
-
-interface APIPayload {
-  message: string;
-  /** Only user/assistant messages — no secrets, no system prompts. */
-  history: Array<{ role: "user" | "assistant"; content: string }>;
-}
-
-const SESSION_ID_KEY = "ask-arun-session-id";
+/* ── Session ID (auxiliary rate-limit key, not for auth) ─────────────── */
 
 function getOrCreateSessionId(): string {
   try {
@@ -79,7 +72,46 @@ function getOrCreateSessionId(): string {
   }
 }
 
-async function callChatAPI(payload: APIPayload): Promise<string> {
+/* ── API types ───────────────────────────────────────────────────────────── */
+
+interface APIPayload {
+  message: string;
+  /** Only user/assistant messages — no secrets, no system prompts. */
+  history: Array<{ role: "user" | "assistant"; content: string }>;
+}
+
+interface ConversationsResponse {
+  messages: ChatMessage[];
+  conversationId: string | null;
+}
+
+/* ── API calls ───────────────────────────────────────────────────────────── */
+
+class RateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
+async function fetchHistory(): Promise<ConversationsResponse> {
+  try {
+    const res = await fetch("/api/conversations", {
+      method: "GET",
+      credentials: "include", // send ask_arun_sid cookie
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    if (!res.ok) return { messages: [], conversationId: null };
+
+    const data = await res.json() as ConversationsResponse;
+    return data;
+  } catch {
+    return { messages: [], conversationId: null };
+  }
+}
+
+async function callChatAPI(payload: APIPayload): Promise<{ answer: string; conversationId: string | null }> {
   const sessionId = getOrCreateSessionId();
   const res = await fetch("/api/chat", {
     method: "POST",
@@ -87,9 +119,9 @@ async function callChatAPI(payload: APIPayload): Promise<string> {
       "Content-Type": "application/json",
       "x-session-id": sessionId,
     },
+    credentials: "include", // send ask_arun_sid cookie
     body: JSON.stringify(payload),
-    // Prevent fetch from retrying automatically
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(35_000),
   });
 
   if (res.status === 429) {
@@ -101,15 +133,8 @@ async function callChatAPI(payload: APIPayload): Promise<string> {
     throw new Error((body as { error?: string }).error ?? "Request failed.");
   }
 
-  const data = await res.json() as { answer: string };
-  return data.answer;
-}
-
-class RateLimitError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "RateLimitError";
-  }
+  const data = await res.json() as { answer: string; conversationId?: string | null };
+  return { answer: data.answer, conversationId: data.conversationId ?? null };
 }
 
 /* ── Component ─────────────────────────────────────────────────────────── */
@@ -121,25 +146,48 @@ interface AskArunPanelProps {
 
 export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    // On first mount: restore session history if available
-    const history = loadHistory();
-    return history.length > 0
-      ? [WELCOME_MESSAGE, ...history]
-      : [WELCOME_MESSAGE];
+    // Fast initial render: use sessionStorage cache if available
+    const cached = loadCachedHistory();
+    return cached.length > 0 ? [WELCOME_MESSAGE, ...cached] : [WELCOME_MESSAGE];
   });
   const [inputValue, setInputValue] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
   const headingId = `${panelId}-heading`;
+  const hasRestoredRef = useRef(false);
 
   const hasUserMessage = messages.some((m) => m.role === "user");
+
+  // ── Restore Supabase history on first open ─────────────────────────────
+  useEffect(() => {
+    if (!isOpen || hasRestoredRef.current) return;
+    hasRestoredRef.current = true;
+
+    setIsRestoring(true);
+    fetchHistory()
+      .then(({ messages: dbMessages }) => {
+        if (dbMessages.length > 0) {
+          // Supabase history available — replace sessionStorage cache
+          setMessages([WELCOME_MESSAGE, ...dbMessages]);
+          saveCachedHistory(dbMessages);
+        }
+        // If no DB history, keep the sessionStorage-seeded state
+      })
+      .catch(() => {
+        // Silently fall back to sessionStorage cache
+      })
+      .finally(() => {
+        setIsRestoring(false);
+      });
+  }, [isOpen]);
 
   // Scroll to latest message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending]);
+  }, [messages, isSending, isRestoring]);
 
   // Escape key closes panel
   useEffect(() => {
@@ -175,18 +223,19 @@ export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
 
       setMessages((prev) => {
         const next = [...prev, userMsg];
-        saveHistory(next);
+        saveCachedHistory(next);
         return next;
       });
       setIsSending(true);
 
       try {
-        // Build sanitised history for the API — only user/assistant, no welcome msg
+        // Build client history snapshot for the API.
+        // The server prefers DB history; this is a fallback if DB is unavailable.
         const historyForAPI = messages
           .filter((m) => m.id !== "welcome" && m.status === "complete")
           .map((m) => ({ role: m.role, content: m.content }));
 
-        const answer = await callChatAPI({
+        const { answer } = await callChatAPI({
           message: trimmed,
           history: historyForAPI,
         });
@@ -201,7 +250,7 @@ export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
 
         setMessages((prev) => {
           const next = [...prev, assistantMsg];
-          saveHistory(next);
+          saveCachedHistory(next);
           return next;
         });
       } catch (err) {
@@ -214,7 +263,6 @@ export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
 
         setErrorBanner(msg);
 
-        // Add error message to chat
         const errorMsg: ChatMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
@@ -231,7 +279,8 @@ export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
   );
 
   const handleNewChat = useCallback(() => {
-    clearHistory();
+    clearCachedHistory();
+    hasRestoredRef.current = false; // allow re-restore if the panel is reopened
     setMessages([WELCOME_MESSAGE]);
     setInputValue("");
     setErrorBanner(null);
@@ -309,8 +358,20 @@ export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
               ))}
 
               {/* Quick prompts — before first user message */}
-              {!hasUserMessage && (
+              {!hasUserMessage && !isRestoring && (
                 <QuickPrompts onSelect={(p) => sendMessage(p)} />
+              )}
+
+              {/* Restoring indicator */}
+              {isRestoring && (
+                <div className="ask-arun-msg-row ask-arun-msg-row--assistant">
+                  <div className="ask-arun-avatar" aria-hidden="true">
+                    <SparkIcon size={14} />
+                  </div>
+                  <div className="ask-arun-bubble ask-arun-bubble--assistant">
+                    <TypingIndicator />
+                  </div>
+                </div>
               )}
 
               {/* Typing indicator */}
@@ -333,7 +394,7 @@ export function AskArunPanel({ isOpen, onClose }: AskArunPanelProps) {
               value={inputValue}
               onChange={setInputValue}
               onSend={sendMessage}
-              disabled={isSending}
+              disabled={isSending || isRestoring}
             />
           </motion.div>
         </>

@@ -3,23 +3,41 @@
  *
  * The Ask Arun AI portfolio assistant API endpoint.
  *
- * Security architecture (Phase 5 Hardened):
+ * Security architecture (Phase 5 Hardened + Supabase persistence):
  *   Browser → /api/chat → Server → AI Provider
  *   1. The browser NEVER calls the AI provider directly.
  *   2. API keys are server-side only (never exposed to client).
  *   3. Origin validation: Validates Origin header (production: arunx.xyz; dev: localhost/127.0.0.1).
  *   4. Distributed rate limiting via Upstash Redis with fail-closed production protection.
- *   5. Session ID used strictly as an auxiliary rate-limit key (never for auth/privilege).
- *   6. Strict input validation (types, limits, roles whitelist).
- *   7. Authoritative server-side system prompt generation.
- *   8. Gemini request timeout protection with clean error handling.
- *   9. Zero secret or sensitive data leakage in logs.
+ *   5. Session resolved from HttpOnly cookie (visitor_sessions table).
+ *   6. Conversation get-or-created per session; messages persisted server-side.
+ *   7. Strict input validation (types, limits, roles whitelist).
+ *   8. Authoritative server-side system prompt generation.
+ *   9. AI receives DB history (not client-supplied) as the authoritative conversation context.
+ *  10. Gemini request timeout protection with clean error handling.
+ *  11. Zero secret or sensitive data leakage in logs or responses.
+ *
+ * Architecture notes:
+ *  - The client sends its current message + a short local history snapshot as a
+ *    UX fallback. The server ALWAYS merges this with the authoritative DB history,
+ *    deduplicates, and sends the merged result to the AI.
+ *  - Supabase persistence is non-blocking on errors: if the DB is unavailable,
+ *    the chat still works using the client-supplied history (graceful degradation).
+ *  - No ai_memories table. Arun's memory is file-based (src/memory/arun-memory.md).
  */
 
 import { NextRequest, NextResponse } from "next/server";
 import { getAIProvider, type AIMessage } from "@/lib/ai/provider";
 import { buildSystemPrompt } from "@/lib/ai/prompts";
 import { checkRateLimit, pruneMemoryEntries } from "@/lib/rate-limit";
+import { resolveVisitorSession } from "@/lib/visitor-session";
+import {
+  getOrCreateConversation,
+  getRecentMessages,
+  persistMessage,
+  verifyOwnership,
+  setConversationTitle,
+} from "@/lib/supabase/persistence";
 
 /* ── Config ──────────────────────────────────────────────────────────────── */
 
@@ -38,6 +56,12 @@ const MAX_OUTPUT_TOKENS = parseInt(
 const REQUEST_TIMEOUT_MS = parseInt(
   process.env.AI_REQUEST_TIMEOUT_MS ?? "15000",
   10
+);
+
+/** Whether Supabase credentials are configured (persistence is optional). */
+const isSupabaseConfigured = Boolean(
+  (process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL) &&
+    process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 /* ── Allowed roles whitelist ─────────────────────────────────────────────── */
@@ -64,6 +88,7 @@ export async function POST(req: NextRequest) {
 
   // ── 2. Client IP & Session handling ────────────────────────────────────
   const ip = getClientIP(req);
+  // x-session-id is used ONLY as an auxiliary rate-limit key (not for auth)
   const rawSessionId = req.headers.get("x-session-id");
 
   // ── 3. Distributed Rate Limit (Fail-Closed in Production) ───────────────
@@ -124,8 +149,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 6. Validate history ────────────────────────────────────────────────
-  const history: AIMessage[] = [];
+  // ── 6. Validate client-supplied history (UX fallback only) ─────────────
+  const clientHistory: AIMessage[] = [];
 
   if ("history" in raw) {
     if (!Array.isArray(raw.history)) {
@@ -157,27 +182,111 @@ export async function POST(req: NextRequest) {
       }
 
       const content = String(h.content).trim().slice(0, MAX_MESSAGE_LENGTH);
-      history.push({ role: h.role as AIMessage["role"], content });
+      clientHistory.push({ role: h.role as AIMessage["role"], content });
     }
   }
 
-  // Append current user message
-  const messages: AIMessage[] = [...history, { role: "user", content: message }];
+  // ── 7. Supabase persistence (graceful degradation if unavailable) ───────
+  let conversationId: string | null = null;
+  let dbHistory: AIMessage[] = [];
+  const responseHeaders: Record<string, string> = {};
 
-  // ── 7. Build authoritative system prompt (server-created) ──────────────
+  if (isSupabaseConfigured) {
+    try {
+      // Resolve visitor session from HttpOnly cookie
+      const sessionResult = await resolveVisitorSession();
+
+      if (!sessionResult.dbError && sessionResult.session) {
+        const sessionId = sessionResult.session.id;
+
+        // Carry session cookie forward
+        if (sessionResult.setCookieHeader) {
+          responseHeaders["Set-Cookie"] = sessionResult.setCookieHeader;
+        }
+
+        // Get or create conversation for this session
+        const convResult = await getOrCreateConversation(sessionId);
+
+        if (!convResult.error && convResult.data) {
+          conversationId = convResult.data.id;
+
+          // Verify ownership before reading (service_role bypasses RLS)
+          const owned = await verifyOwnership(conversationId, sessionId);
+
+          if (owned) {
+            // Fetch authoritative DB history (oldest → newest)
+            const msgResult = await getRecentMessages(
+              conversationId,
+              MAX_HISTORY_MESSAGES
+            );
+
+            if (!msgResult.error && msgResult.data) {
+              dbHistory = msgResult.data.map((m) => ({
+                role: m.role,
+                content: m.content,
+              }));
+            }
+          } else {
+            // Ownership mismatch — treat as new conversation
+            conversationId = null;
+          }
+        }
+      }
+    } catch (err) {
+      // DB unavailable — fall back to client-supplied history gracefully
+      console.warn(
+        "[AskArun] Supabase unavailable, using client history:",
+        err instanceof Error ? err.message : "unknown"
+      );
+      conversationId = null;
+    }
+  }
+
+  // ── 8. Merge DB history with client history ────────────────────────────
+  // DB history is authoritative. Client history fills in when DB is unavailable.
+  // If DB history is available, prefer it exclusively to avoid duplication.
+  const historyForAI: AIMessage[] =
+    dbHistory.length > 0
+      ? dbHistory
+      : clientHistory.slice(-MAX_HISTORY_MESSAGES);
+
+  // Append current user message for the AI call
+  const messagesForAI: AIMessage[] = [
+    ...historyForAI,
+    { role: "user", content: message },
+  ];
+
+  // ── 9. Persist user message ────────────────────────────────────────────
+  // Fire-and-forget for latency; errors are non-fatal
+  if (conversationId) {
+    void persistMessage(conversationId, "user", message).then((result) => {
+      if (result.error) {
+        console.warn("[AskArun] Failed to persist user message:", result.error);
+      }
+      // Set conversation title from first user message (if conversation is new)
+      if (dbHistory.length === 0) {
+        setConversationTitle(conversationId!, message);
+      }
+    });
+  }
+
+  // ── 10. Build authoritative system prompt (server-created) ─────────────
   let systemPrompt: string;
   try {
     systemPrompt = buildSystemPrompt();
   } catch (err) {
-    console.error("[AskArun] Failed to build system prompt:", err instanceof Error ? err.message : "unknown");
+    console.error(
+      "[AskArun] Failed to build system prompt:",
+      err instanceof Error ? err.message : "unknown"
+    );
     return errorResponse(500, "I'm having trouble right now. Please try again in a moment.");
   }
 
-  // ── 8. Call AI provider with timeout protection ────────────────────────
+  // ── 11. Call AI provider with timeout protection ────────────────────────
   let answer: string;
   try {
     const provider = await getAIProvider();
-    const result = await provider.chat(systemPrompt, messages, {
+    const result = await provider.chat(systemPrompt, messagesForAI, {
       maxOutputTokens: MAX_OUTPUT_TOKENS,
       timeoutMs: REQUEST_TIMEOUT_MS,
     });
@@ -208,14 +317,24 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // ── 9. Return sanitised response ───────────────────────────────────────
+  // ── 12. Persist assistant message ──────────────────────────────────────
+  if (conversationId) {
+    void persistMessage(conversationId, "assistant", answer).then((result) => {
+      if (result.error) {
+        console.warn("[AskArun] Failed to persist assistant message:", result.error);
+      }
+    });
+  }
+
+  // ── 13. Return sanitised response ──────────────────────────────────────
   return NextResponse.json(
-    { answer },
+    { answer, conversationId },
     {
       status: 200,
       headers: {
         "X-RateLimit-Remaining": String(rateLimit.remaining),
         "Cache-Control": "no-store",
+        ...responseHeaders,
       },
     }
   );
